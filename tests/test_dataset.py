@@ -1484,6 +1484,61 @@ class TestDataset(unittest.TestCase):
 
         assert all(s0.__key__ == s1.__key__ for s0, s1 in zip(samples_r0_cmp, samples_r0_restored))
 
+    def test_packing_postencode_restore_sample(self):
+        # Regression: PackingDataset.restore_sample double-unpacks inner_idx when the
+        # TaskEncoder overrides postencode_sample (so PackingDataset.sample_encoder is set),
+        # corrupting the restore key and raising AssertionError. Mirror test_packing but use
+        # postencode_sample instead of encode_sample.
+        torch.manual_seed(42)
+
+        class TestTaskEncoder(DefaultTaskEncoder):
+            def __init__(self):
+                super().__init__(raw_batch_type=CaptioningBatch)
+
+            def select_samples_to_pack(
+                self, samples: List[CaptioningSample]
+            ) -> List[List[CaptioningSample]]:
+                assert len(samples) == 21
+                return [samples[:1], samples[1 : 1 + 4], samples[1 + 4 : 1 + 4 + 16]]
+
+            @stateless
+            def postencode_sample(self, sample: CaptioningSample) -> EncodedCaptioningSample:
+                return EncodedCaptioningSample.derive_from(
+                    sample,
+                    image=sample.image,
+                    caption=torch.frombuffer(sample.caption.encode(), dtype=torch.uint8),
+                )
+
+            @stateless
+            def pack_selected_samples(
+                self, samples: List[EncodedCaptioningSample]
+            ) -> EncodedCaptioningSample:
+                return EncodedCaptioningSample(
+                    __key__=",".join([sample.__key__ for sample in samples]),
+                    __restore_key__=(),
+                    image=torch.stack([sample.image for sample in samples]),
+                    caption=torch.cat([sample.caption for sample in samples]),
+                )
+
+        loader = get_loader(
+            get_train_dataset(
+                self.dataset_path,
+                batch_size=2,
+                packing_buffer_size=21,
+                worker_config=no_worker_config,
+                virtual_epoch_length=6,
+                shuffle_buffer_size=None,
+                max_samples_per_sequence=None,
+                task_encoder=TestTaskEncoder(),
+            )
+        )
+
+        samples = list(loader)
+        # restore_sample must round-trip; the double-unpack bug raises AssertionError here.
+        restored = loader.restore_sample(samples[1].__restore_key__)
+        assert restored.__key__ == samples[1].__key__
+        assert restored.__restore_key__ == samples[1].__restore_key__
+
     def test_packing_val(self):
         torch.manual_seed(42)
 
