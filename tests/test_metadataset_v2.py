@@ -1290,6 +1290,15 @@ class TestDataset(unittest.TestCase):
 
         mock_watchdog_trigger.assert_called()
 
+    def test_subset_relative_start_end_keyword_fails(self):
+        # A relative (percentage) start combined with the "end" keyword is invalid: the "end"
+        # keyword is only allowed for absolute integer ranges. This must raise a clear
+        # AssertionError, not a cryptic TypeError from comparing an int with None.
+        from megatron.energon.metadataset.metadataset_v2 import Subset
+
+        with self.assertRaises(AssertionError):
+            Subset(range=("50%", "end")).as_dataset_subset()
+
     def test_dataset_absolute_nested_subset_fail(self):
         worker_config = WorkerConfig(
             rank=0,

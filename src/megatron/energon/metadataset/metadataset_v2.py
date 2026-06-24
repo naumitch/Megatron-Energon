@@ -131,7 +131,10 @@ class Subset:
             return DatasetSubset(absolute_range=(start, end), range=(0, 1))
         else:
             assert isinstance(start, float), "Range start must be a float if it's not an integer"
-            assert isinstance(end, float) or end is None, "End must be a float if start is a float"
+            assert isinstance(end, float), (
+                "End must be a relative percentage (e.g. '75%') if start is relative; "
+                "the 'end' keyword is only allowed for absolute integer ranges"
+            )
             assert 0 <= start <= 1, "Start must be between 0 and 1"
             assert 0 <= end <= 1, "End must be between 0 and 1"
             assert start <= end, "Start must be less than end"
