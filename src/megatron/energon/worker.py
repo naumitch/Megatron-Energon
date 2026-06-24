@@ -78,7 +78,7 @@ class WorkerConfig:
     active_worker_config: ClassVar[Optional["WorkerConfig"]] = None
 
     #: The global rank override for the worker. Required for restoring samples.
-    _worker_override_global_rank: ClassVar[Optional[List[int]]] = None
+    _worker_override_global_rank: ClassVar[Optional[int]] = None
 
     #: The current cache pool for the worker.
     _cache_pool: "ClassVar[Optional[CachePool]]" = None
@@ -100,19 +100,20 @@ class WorkerConfig:
     def worker_push_sample_index(self, sample_index: int):
         """Pushes a new sample index to the sample index stack. Should be set by wrapping datasets
         before calling inners."""
-        assert WorkerConfig.active_worker_config is not None
+        assert WorkerConfig._sample_index_stack is not None
         WorkerConfig._sample_index_stack.append(sample_index)
 
     def worker_pop_sample_index(self):
         """Pushes a new sample index to the sample index stack. Should be set by wrapping datasets
         before calling inners."""
-        assert WorkerConfig.active_worker_config is not None
+        assert WorkerConfig._sample_index_stack is not None
         return WorkerConfig._sample_index_stack.pop()
 
     def worker_deactivate(self):
         """Deactivates the worker config for the current worker and deactivates it for iterating.
         Must be called after next() call on the datasets."""
         if WorkerConfig.active_worker_config is not None:
+            assert WorkerConfig._sample_index_stack is not None
             assert len(WorkerConfig._sample_index_stack) == 1, (
                 f"Sample index stack not empty: {WorkerConfig._sample_index_stack}"
             )
@@ -125,6 +126,7 @@ class WorkerConfig:
         """Returns the current sample index for the actively iterating worker."""
         # Internal sample index is for the local worker. If using multiple workers per rank, this
         # must be multiplied by the number of workers and offset by the local worker index.
+        assert WorkerConfig._sample_index_stack is not None
         return (
             WorkerConfig._sample_index_stack[-1] * max(self.num_workers, 1) + self.rank_worker_id()
         )
@@ -134,6 +136,7 @@ class WorkerConfig:
         """Returns the current batch index for the actively iterating worker."""
         # Internal batch index is for the local worker. If using multiple workers per rank, this
         # must be multiplied by the number of workers and offset by the local worker index.
+        assert WorkerConfig._sample_index_stack is not None
         return (
             WorkerConfig._sample_index_stack[0] * max(self.num_workers, 1) + self.rank_worker_id()
         )

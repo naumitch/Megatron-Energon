@@ -427,14 +427,6 @@ src/megatron/energon/typed_converter.py:0: note: def pop(self, Any, /) -> Any
 src/megatron/energon/typed_converter.py:0: note: def pop(self, Any, Any, /) -> Any
 src/megatron/energon/typed_converter.py:0: note: def pop(self, Any, Any, /) -> Any
 src/megatron/energon/watchdog.py:0: error: Incompatible types in assignment (expression has type "FrameType | None", variable has type "FrameType")  [assignment]
-src/megatron/energon/worker.py:0: error: Argument 1 to "len" has incompatible type "list[int] | None"; expected "Sized"  [arg-type]
-src/megatron/energon/worker.py:0: error: Incompatible return value type (got "list[int]", expected "int")  [return-value]
-src/megatron/energon/worker.py:0: error: Incompatible types in assignment (expression has type "int | None", variable has type "list[int] | None")  [assignment]
-src/megatron/energon/worker.py:0: error: Item "None" of "list[int] | None" has no attribute "append"  [union-attr]
-src/megatron/energon/worker.py:0: error: Item "None" of "list[int] | None" has no attribute "pop"  [union-attr]
-src/megatron/energon/worker.py:0: error: Unsupported operand types for % ("list[int]" and "int")  [operator]
-src/megatron/energon/worker.py:0: error: Value of type "list[int] | None" is not indexable  [index]
-src/megatron/energon/worker.py:0: error: Value of type "list[int] | None" is not indexable  [index]
 src/megatron/energon/wrappers/base.py:0: error: Argument 1 of "restore_state" is incompatible with supertype "megatron.energon.savable.Savable"; supertype defines the argument type as "FlexState"  [override]
 src/megatron/energon/wrappers/base.py:0: error: Incompatible return value type (got "T_sample_in", expected "T_sample_out")  [return-value]
 src/megatron/energon/wrappers/base.py:0: error: Incompatible return value type (got "T_sample_in", expected "T_sample_out")  [return-value]
