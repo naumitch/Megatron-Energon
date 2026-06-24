@@ -19,7 +19,6 @@ class BlendDataset(BaseWrapperDataset[T_sample, T_sample]):
     The datasets may be infinite. This dataset is always infinite.
     """
 
-    datasets: List[SavableDataset[T_sample]]
     weights: Tuple[float, ...]
     dataset_weights: Sequence[Tuple[SavableDataset[T_sample], float]]
     exhausted: List[bool]
@@ -40,8 +39,8 @@ class BlendDataset(BaseWrapperDataset[T_sample, T_sample]):
                 given probabilities.
             worker_config: Configuration for the workers.
         """
-        # datasets = [dataset for dataset, _weight in dataset_weights]
-        self.datasets, self.weights = zip(*dataset_weights)
+        self.datasets = tuple(dataset for dataset, _ in dataset_weights)
+        self.weights = tuple(weight for _, weight in dataset_weights)
 
         super().__init__(self.datasets, worker_config=worker_config)
 
@@ -62,7 +61,7 @@ class BlendDataset(BaseWrapperDataset[T_sample, T_sample]):
         # Create a list of datasets and their weights, but
         # set the weight to 0 if the dataset has no samples on this worker.
 
-        dataset_iters = []
+        dataset_iters: list[Iterator[T_sample] | None] = []
         weights = []
         for idx, (dataset, weight) in enumerate(self.dataset_weights):
             assert weight > 0, "All blending weights must be > 0"
@@ -75,8 +74,8 @@ class BlendDataset(BaseWrapperDataset[T_sample, T_sample]):
                 weights.append(0)
                 self.exhausted[idx] = True
 
-        weights = torch.tensor(weights, dtype=torch.float32)
-        if weights.sum() == 0:
+        weights_tensor = torch.tensor(weights, dtype=torch.float32)
+        if weights_tensor.sum() == 0:
             raise RuntimeError(
                 "There is a worker with no samples in any of the blended datasets. "
                 "This can happen if you have a lot of workers and your dataset is too small. "
@@ -86,21 +85,22 @@ class BlendDataset(BaseWrapperDataset[T_sample, T_sample]):
         # Some may already be exhausted on this worker when restoring a state.
         for idx, exhausted in enumerate(self.exhausted):
             if exhausted:
-                weights[idx] = 0
+                weights_tensor[idx] = 0
                 dataset_iters[idx] = None
 
         while True:
-            ds_idx = self._worker_rng.choice_idx(probs=weights)
+            ds_idx = self._worker_rng.choice_idx(probs=weights_tensor)
 
-            if dataset_iters[ds_idx] is None:
+            cur_iter = dataset_iters[ds_idx]
+            if cur_iter is None:
                 if all(dataset_iter is None for dataset_iter in dataset_iters):
                     break
                 continue
             try:
-                sample = next(dataset_iters[ds_idx])
+                sample = next(cur_iter)
             except StopIteration:
                 dataset_iters[ds_idx] = None
-                weights[ds_idx] = 0
+                weights_tensor[ds_idx] = 0
                 self.exhausted[ds_idx] = True
                 if all(dataset_iter is None for dataset_iter in dataset_iters):
                     break

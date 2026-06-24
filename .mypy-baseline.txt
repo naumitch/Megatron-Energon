@@ -152,23 +152,8 @@ src/megatron/energon/metadataset/metadataset.py:0: error: Argument "path" to "Tr
 src/megatron/energon/metadataset/metadataset.py:0: error: Argument 1 to "check_dataset_info_present" has incompatible type "str | EPath"; expected "EPath"  [arg-type]
 src/megatron/energon/metadataset/metadataset.py:0: error: Item "str" of "str | EPath" has no attribute "is_file"  [union-attr]
 src/megatron/energon/metadataset/metadataset.py:0: error: Item "str" of "str | EPath" has no attribute "is_file"  [union-attr]
-src/megatron/energon/metadataset/metadataset_v2.py:0: error: "Subset" has no attribute "absolute_range"  [attr-defined]
-src/megatron/energon/metadataset/metadataset_v2.py:0: error: Argument "path" to "TraversedDatasetReference" has incompatible type "str | EPath"; expected "EPath"  [arg-type]
-src/megatron/energon/metadataset/metadataset_v2.py:0: error: Argument 1 to "get_dataset_type" has incompatible type "str | EPath"; expected "EPath"  [arg-type]
-src/megatron/energon/metadataset/metadataset_v2.py:0: error: Argument 1 to "get_dataset_type" has incompatible type "str | EPath"; expected "EPath"  [arg-type]
-src/megatron/energon/metadataset/metadataset_v2.py:0: error: Argument 1 to "get_dataset_type" has incompatible type "str | EPath"; expected "EPath"  [arg-type]
-src/megatron/energon/metadataset/metadataset_v2.py:0: error: Incompatible types in assignment (expression has type "dict[str, AuxDatasetReference | AuxFilesystemReference]", variable has type "dict[str, str | AuxDatasetReference | AuxFilesystemReference] | None")  [assignment]
-src/megatron/energon/metadataset/metadataset_v2.py:0: error: Incompatible types in assignment (expression has type "dict[str, JoinedDatasetInfo]", variable has type "list[JoinedDatasetInfo]")  [assignment]
 src/megatron/energon/metadataset/metadataset_v2.py:0: error: Incompatible types in assignment (expression has type "float | int | None", variable has type "str | int")  [assignment]
 src/megatron/energon/metadataset/metadataset_v2.py:0: error: Incompatible types in assignment (expression has type "float | int | None", variable has type "str | int")  [assignment]
-src/megatron/energon/metadataset/metadataset_v2.py:0: error: Item "str" of "str | AuxDatasetReference | AuxFilesystemReference" has no attribute "get_file_store"  [union-attr]
-src/megatron/energon/metadataset/metadataset_v2.py:0: error: Item "str" of "str | EPath" has no attribute "is_file"  [union-attr]
-src/megatron/energon/metadataset/metadataset_v2.py:0: error: Return type "DatasetLoader" of "post_initialize" incompatible with return type "None" in supertype "DatasetReference"  [override]
-src/megatron/energon/metadataset/metadataset_v2.py:0: error: Unsupported left operand type for / ("str")  [operator]
-src/megatron/energon/metadataset/metadataset_v2.py:0: error: Value of type "tuple[float, float] | None" is not indexable  [index]
-src/megatron/energon/metadataset/metadataset_v2.py:0: error: Value of type "tuple[float, float] | None" is not indexable  [index]
-src/megatron/energon/metadataset/metadataset_v2.py:0: error: Value of type "tuple[float, float] | None" is not indexable  [index]
-src/megatron/energon/metadataset/metadataset_v2.py:0: note: Left operand is of type "str | EPath"
 src/megatron/energon/retry_stream.py:0: error: Argument 1 of "__exit__" is incompatible with supertype "typing.IO"; supertype defines the argument type as "type[BaseException] | None"  [override]
 src/megatron/energon/retry_stream.py:0: error: Argument 2 of "__exit__" is incompatible with supertype "typing.IO"; supertype defines the argument type as "BaseException | None"  [override]
 src/megatron/energon/retry_stream.py:0: error: Argument 3 of "__exit__" is incompatible with supertype "typing.IO"; supertype defines the argument type as "TracebackType | None"  [override]
@@ -414,20 +399,6 @@ src/megatron/energon/wrappers/batch_dataset.py:0: error: Argument 2 to "iter_ctx
 src/megatron/energon/wrappers/batch_dataset.py:0: error: Argument 2 to "set_sample_restore_key" has incompatible type "str | int | tuple[Any, ...]"; expected "int | str"  [arg-type]
 src/megatron/energon/wrappers/batch_dataset.py:0: error: Argument 3 to "set_sample_restore_key" has incompatible type "*list[str | int | tuple[Any, ...]]"; expected "int | str"  [arg-type]
 src/megatron/energon/wrappers/batch_dataset.py:0: error: Argument 4 to "set_sample_restore_key" has incompatible type "*list[str | int | tuple[Any, ...]]"; expected "int | str"  [arg-type]
-src/megatron/energon/wrappers/blend_dataset.py:0: error: "list[float]" has no attribute "sum"  [attr-defined]
-src/megatron/energon/wrappers/blend_dataset.py:0: error: Argument "probs" to "choice_idx" of "WorkerRng" has incompatible type "list[float]"; expected "Tensor"  [arg-type]
-src/megatron/energon/wrappers/blend_dataset.py:0: error: Argument 1 to "append" of "list" has incompatible type "None"; expected "Iterator[T_sample]"  [arg-type]
-src/megatron/energon/wrappers/blend_dataset.py:0: error: Incompatible types in assignment (expression has type "Tensor", variable has type "list[float]")  [assignment]
-src/megatron/energon/wrappers/blend_dataset.py:0: error: Incompatible types in assignment (expression has type "list[SavableDataset[T_sample]]", base class "BaseWrapperDataset" defined the type as "tuple[SavableDataset[T_sample], ...]")  [assignment]
-src/megatron/energon/wrappers/blend_dataset.py:0: error: Incompatible types in assignment (expression has type "tuple[Any, ...]", variable has type "list[SavableDataset[T_sample]]")  [assignment]
-src/megatron/energon/wrappers/blend_dataset.py:0: error: No overload variant of "__setitem__" of "list" matches argument types "int", "None"  [call-overload]
-src/megatron/energon/wrappers/blend_dataset.py:0: error: No overload variant of "__setitem__" of "list" matches argument types "int", "None"  [call-overload]
-src/megatron/energon/wrappers/blend_dataset.py:0: note: Possible overload variants:
-src/megatron/energon/wrappers/blend_dataset.py:0: note: Possible overload variants:
-src/megatron/energon/wrappers/blend_dataset.py:0: note: def __setitem__(self, SupportsIndex, Iterator[T_sample], /) -> None
-src/megatron/energon/wrappers/blend_dataset.py:0: note: def __setitem__(self, SupportsIndex, Iterator[T_sample], /) -> None
-src/megatron/energon/wrappers/blend_dataset.py:0: note: def __setitem__(self, slice[SupportsIndex | None, SupportsIndex | None, SupportsIndex | None], Iterable[Iterator[T_sample]], /) -> None
-src/megatron/energon/wrappers/blend_dataset.py:0: note: def __setitem__(self, slice[SupportsIndex | None, SupportsIndex | None, SupportsIndex | None], Iterable[Iterator[T_sample]], /) -> None
 src/megatron/energon/wrappers/buffer.py:0: error: "T_sample" has no attribute "__iter__" (not iterable)  [attr-defined]
 src/megatron/energon/wrappers/buffer.py:0: error: "T_sample" has no attribute "__key__"  [attr-defined]
 src/megatron/energon/wrappers/buffer.py:0: error: Argument 1 to "append" of "list" has incompatible type "str | int | None"; expected "tuple[str | int | tuple[Any, ...], ...]"  [arg-type]
