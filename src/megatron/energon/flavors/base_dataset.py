@@ -36,32 +36,46 @@ from megatron.energon.worker import WorkerConfig
 
 T_sample = TypeVar("T_sample", covariant=True)
 T = TypeVar("T", covariant=True)
+#: Invariant type variables for identity / structure-preserving helpers. A covariant variable
+#: cannot be used here because it appears in parameter position (PEP 484).
+T_pin = TypeVar("T_pin")
+T_restore = TypeVar("T_restore")
 
 
 class PinMemoryMixin:
     """A mixin class providing a generic `pin_memory` function."""
 
-    def _pin_memory(self, batch: T, device: Union[torch.device, str, None] = None) -> T:
+    def _pin_memory(self, batch: T_pin, device: Union[torch.device, str, None] = None) -> T_pin:
         """Pin memory of a batch. Uses recursion to handle nested structures. Supports nested
         structures of dicts, dataclasses, namedtuples, lists and tuples."""
+        # Each branch rebuilds the *same* container type it received, so the result is always the
+        # input type ``T_pin``. mypy cannot track that through the dynamic ``type(batch)(...)``
+        # reconstruction, so the structure-preserving returns are cast explicitly.
         if isinstance(batch, torch.Tensor):
-            return batch.pin_memory(device)
+            return cast(T_pin, batch.pin_memory(device))
         elif isinstance(batch, dict):
-            return {key: self._pin_memory(value, device) for key, value in batch.items()}
+            return cast(
+                T_pin, {key: self._pin_memory(value, device) for key, value in batch.items()}
+            )
         elif dataclasses.is_dataclass(batch):
-            return type(batch)(
-                **{
-                    field.name: self._pin_memory(getattr(batch, field.name), device)
-                    for field in dataclasses.fields(batch)
-                }
+            # is_dataclass narrows to the DataclassInstance protocol, which mypy treats as
+            # non-instantiable; the runtime value is a concrete dataclass, so the call is valid.
+            return cast(
+                T_pin,
+                type(batch)(  # type: ignore[misc]
+                    **{
+                        field.name: self._pin_memory(getattr(batch, field.name), device)
+                        for field in dataclasses.fields(batch)
+                    }
+                ),
             )
         elif isinstance(batch, (tuple, list)):
             if hasattr(batch, "_fields"):
                 # NamedTuple
-                return type(batch)(*[self._pin_memory(val, device) for val in batch])
+                return cast(T_pin, type(batch)(*[self._pin_memory(val, device) for val in batch]))
             else:
                 # list / tuple
-                return type(batch)(self._pin_memory(val, device) for val in batch)
+                return cast(T_pin, type(batch)(self._pin_memory(val, device) for val in batch))
         else:
             return batch
 
@@ -421,8 +435,8 @@ class BaseCoreDatasetFactory(Generic[T_sample], ABC):
 
 
 def add_sample_restore_key(
-    sample: T_sample, *key: Union[int, str], src: Any, fail_otherwise: bool = False
-) -> T_sample:
+    sample: T_restore, *key: Union[int, str], src: Any, fail_otherwise: bool = False
+) -> T_restore:
     """Adds a key to a sample. The sample must be a valid `Sample` or dict containing
     __restore_key__, which is a tuple of keys that can be used to restore the inner sample.
     This restore key is prepended with the `key`."""
@@ -441,8 +455,8 @@ def add_sample_restore_key(
 
 
 def set_sample_restore_key(
-    sample: T_sample, *key: Union[int, str], src: Any, fail_otherwise: bool = False
-) -> T_sample:
+    sample: T_restore, *key: Union[int, str], src: Any, fail_otherwise: bool = False
+) -> T_restore:
     """Sets the restore key for a sample. The sample must be a valid `Sample` or dict containing
     __restore_key__, which is a tuple of keys that can be used to restore the inner sample.
     This restore key is prepended with the `key`."""
@@ -472,7 +486,8 @@ def legacy_handler(
 
     handler_sig = inspect.signature(handler)
     if len(handler_sig.parameters) != 3:
-        original_handler = handler
+        # Arity checked at runtime: this branch is the legacy two-argument handler.
+        original_handler = cast(Callable[[Exception, Optional[str]], None], handler)
 
         @functools.wraps(original_handler)
         def wrapped_handler(
@@ -482,4 +497,5 @@ def legacy_handler(
 
         return wrapped_handler
     else:
-        return handler
+        # Arity checked at runtime: already the three-argument handler.
+        return cast(Callable[[Exception, Optional[str], Optional[list[SourceInfo]]], None], handler)
