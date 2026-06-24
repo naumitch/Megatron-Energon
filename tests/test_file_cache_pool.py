@@ -127,6 +127,32 @@ class TestFileStoreCachePool(unittest.TestCase):
         finally:
             pool.close()
 
+    def test_get_twice_returns_value_and_source_info(self):
+        """Regression: a second get() on the same FileCacheLazy must return the decoded value
+        (not the (value, SourceInfo) tuple) and append source info, just like the first get()."""
+        pool = FileStoreCachePool(parent_cache_dir=self.temp_path)
+        mock_raw_file_store = MockFileStore({"file1": b"test data 1"})
+        try:
+            lazy_ref = pool.get_lazy(mock_raw_file_store, "file1")
+            assert isinstance(lazy_ref, FileCacheLazy)
+            # Ensure the cached path is taken before reading.
+            lazy_ref.entry.send_to_cache_future.result()
+
+            s1 = {"__sources__": []}
+            r1 = lazy_ref.get(s1)
+            self.assertEqual(r1, b"test data 1")
+            self.assertNotIsInstance(r1, tuple)
+            self.assertEqual(len(s1["__sources__"]), 1)
+
+            # Second get() on the SAME lazy must behave identically.
+            s2 = {"__sources__": []}
+            r2 = lazy_ref.get(s2)
+            self.assertEqual(r2, b"test data 1")
+            self.assertNotIsInstance(r2, tuple)
+            self.assertEqual(len(s2["__sources__"]), 1)
+        finally:
+            pool.close()
+
     def test_shared_references(self):
         """Test that multiple references share the same background task"""
         pool = FileStoreCachePool(parent_cache_dir=self.temp_path)
