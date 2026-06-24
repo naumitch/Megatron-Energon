@@ -11,7 +11,7 @@ import threading
 import uuid
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, Dict, Literal, Optional, Tuple, TypeVar
+from typing import Any, Dict, Literal, Optional, Tuple, TypeVar, cast
 
 from megatron.energon.cache.base import CachePool, FileStore, Lazy
 from megatron.energon.edataclass import edataclass
@@ -83,6 +83,7 @@ class CacheFileLazy(Lazy[T]):
         Get the lazy data now and adds no source info to the sample.
         """
         if self._data is None:
+            assert self.cache_path is not None
             with open(self.cache_path, "rb") as f:
                 self._data = pickle.load(f)
             self.cache_path.unlink()
@@ -114,8 +115,9 @@ class _PendingTask:
     ds: FileStore
     # The file name that we're caching.
     fname: str
-    # The future for the background task that sends the data to the cache.
-    send_to_cache_future: Future
+    # The future for the background task that sends the data to the cache. Transiently None
+    # between entry creation and the immediately-following submit() (both under the pool lock).
+    send_to_cache_future: Optional[Future] = None
     # The number of references to the cache entry.
     refcount: int = 1
     # The size of the data to be cached.
@@ -228,6 +230,7 @@ class FileStoreCachePool(CachePool, ForkMixin):
         with self._lock:
             try:
                 # Attempt to cancel if the job hasn't started
+                assert entry.send_to_cache_future is not None
                 if entry.send_to_cache_future.cancel():
                     was_cached = False
                     try:
@@ -249,6 +252,7 @@ class FileStoreCachePool(CachePool, ForkMixin):
 
                     try:
                         # Can raise exception if job failed
+                        assert entry.send_to_cache_future is not None
                         was_cached = entry.send_to_cache_future.result()
 
                         if was_cached:
@@ -268,6 +272,7 @@ class FileStoreCachePool(CachePool, ForkMixin):
                     # TODO: Could write to cache here, data is already fetched.
                     # Write the result to the cache
                     # Requeue the job, there is another reference to the cache entry
+                    assert self._worker_pool is not None
                     entry.send_to_cache_future = self._worker_pool.submit(
                         self._cache_out_task, ds, fname, entry
                     )
@@ -357,6 +362,7 @@ class FileStoreCachePool(CachePool, ForkMixin):
                 )
                 self._pending_tasks[key] = entry
 
+                assert self._worker_pool is not None
                 entry.send_to_cache_future = self._worker_pool.submit(
                     self._cache_out_task, ds, fname, entry
                 )
@@ -371,7 +377,10 @@ class FileStoreCachePool(CachePool, ForkMixin):
         cache_fname = str(uuid.uuid4())
         cache_path = self.cache_dir / cache_fname
         self._write_to_cache(cache_path, raw_data)
-        return CacheFileLazy(ds=None, fname=name, pool=self, cache_path=cache_path)
+        # ds is a structural sentinel here: CacheFileLazy is cache-only and never dereferences it.
+        return CacheFileLazy(
+            ds=cast("FileStore[Any]", None), fname=name, pool=self, cache_path=cache_path
+        )
 
     def close(self) -> None:
         """
@@ -380,13 +389,15 @@ class FileStoreCachePool(CachePool, ForkMixin):
         with self._lock:
             self._shutting_down = True
             for entry in self._pending_tasks.values():
+                assert entry.send_to_cache_future is not None
                 entry.send_to_cache_future.cancel()
             self._cache_space_available.notify_all()
+        assert self._worker_pool is not None
         self._worker_pool.shutdown(wait=True)
         with self._lock:
             self._pending_tasks.clear()
 
-    def _decrement_refcount_and_cleanup(self, key: Tuple[FileStore, str]) -> None:
+    def _decrement_refcount_and_cleanup(self, key: Tuple[str, str]) -> None:
         """
         Decrement the reference count in `_pending_tasks`.
         If it hits zero, remove the entry. Optionally remove the file if so.
@@ -421,6 +432,7 @@ class FileStoreCachePool(CachePool, ForkMixin):
 
     def _read_from_cache(self, entry: _PendingTask) -> tuple[Any, SourceInfo]:
         assert entry.source_info is not None, "source_info should have been set"
+        assert entry.cache_path is not None
         with open(entry.cache_path, "rb") as f:
             if self.method == "raw":
                 raw = f.read()
@@ -461,6 +473,7 @@ class FileStoreCachePool(CachePool, ForkMixin):
         #     f"FSCP r={torch.distributed.get_rank()}, pid={os.getpid()}: Before fork for oid={id(self)} random_suffix={self.cache_dir.name!r}\n",
         #     end="",
         # )
+        assert self._worker_pool is not None
         self._worker_pool.shutdown(wait=True)
         self._worker_pool = None
 
