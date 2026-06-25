@@ -1111,6 +1111,29 @@ class TestDataset(unittest.TestCase):
             for batch_idx, batch in batches
         )
 
+    def test_restore_reused_loader_with_shuffle_buffer(self):
+        # Regression: restoring state onto the SAME loader instance (num_workers=0) whose shuffle
+        # buffer is partially filled must not trip SavableSampleBuffer.worker_start's
+        # `assert len(self._buffer) == 0`. restore_state must drop the stale live buffer.
+        loader = get_savable_loader(
+            get_train_dataset(
+                self.dataset_path,
+                batch_size=1,
+                worker_config=no_worker_config,
+                shuffle_buffer_size=10,
+                max_samples_per_sequence=None,
+            )
+        )
+        it = iter(loader)
+        for _ in range(3):
+            next(it)  # partially fill the shuffle buffer
+        state = loader.save_state_rank()
+        # Restore onto the SAME loader instance (reused, not recreated).
+        loader.restore_state_rank(state)
+        # Before the fix this raises AssertionError in SavableSampleBuffer.worker_start.
+        first = next(iter(loader))
+        self.assertIsNotNone(first)
+
     def test_current_batch_index_generator(self):
         # Tests if the get_current_batch_index works properly
         torch.manual_seed(42)

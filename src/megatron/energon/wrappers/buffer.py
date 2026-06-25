@@ -115,6 +115,9 @@ class SavableSampleBuffer(BaseWrapperDataset[T_sample, T_sample], Generic[T_samp
         # Just restore the own state
         SavableDataset.restore_state(self, state)
 
+        # Drop any stale live samples so worker_start() can rebuild the buffer from the restored
+        # _restore_keys. Required when restoring onto a reused instance (e.g. num_workers=0).
+        self._buffer = []
         self._restore_pending = True
 
     def restore_key(self) -> Tuple[Union[str, int], ...]:
