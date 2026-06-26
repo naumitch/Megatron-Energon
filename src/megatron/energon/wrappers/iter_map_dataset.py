@@ -99,10 +99,14 @@ class IterMapDataset(BaseWrapperDataset[T_sample, T_sample_out], Generic[T_sampl
         sample_restore_keys = []
 
         def reset_idx_iter() -> Generator[T_sample, None, None]:
-            # Resets the inner sample index
+            # Reset the inner sample index and start a fresh source-key window on each fetched
+            # inner sample. Per the supported (non-aggregating) contract, each fetched sample is
+            # the single source for the outputs it produces, so the window resets here rather than
+            # after each yield (which dropped the source key for the 2nd+ output of a one-to-many).
             nonlocal iter_idx, sample_restore_keys
             for entry in last_sample_wrapper:
                 iter_idx = 0
+                sample_restore_keys.clear()
                 sample_restore_keys.append(get_sample_restore_key(entry))
                 yield entry
 
@@ -120,7 +124,8 @@ class IterMapDataset(BaseWrapperDataset[T_sample, T_sample_out], Generic[T_sampl
                         *sample_restore_keys,
                         src=self,
                     )
-                    sample_restore_keys.clear()
+                    # Do not clear the window here: all outputs from the same fetched inner sample
+                    # (one-to-many) must carry that sample's source key. It resets on the next pull.
                     iter_idx += 1
                 break
 

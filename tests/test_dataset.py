@@ -1534,6 +1534,80 @@ class TestDataset(unittest.TestCase):
         restored = blend.restore_sample(("BlendDataset", 0, "_LeafDS", 1))
         self.assertEqual(restored.value, 1)
 
+    def test_itermap_restore_sample_fanout_shapes(self):
+        # Regression: IterMapDataset.restore_sample must round-trip every output for the supported
+        # (non-aggregating) iter_map_fn shapes: one-to-one, one-to-many, and one-to-zero (skips).
+        # Before the fix, the 2nd+ output of a one-to-many fn lost its source key and crashed.
+        from megatron.energon import IterMapDataset
+        from megatron.energon.flavors.base_dataset import SavableDataset, add_sample_restore_key
+
+        wc = WorkerConfig(rank=0, world_size=1, num_workers=0)
+
+        class _S:
+            def __init__(self, value):
+                self.value = value
+                self.__key__ = str(value)
+                self.__restore_key__ = ()
+
+        class _LeafDS(SavableDataset):
+            def __init__(self, n, *, worker_config):
+                super().__init__(worker_config=worker_config)
+                self._n = n
+
+            def __iter__(self):
+                for i in range(self._n):
+                    yield add_sample_restore_key(_S(i), i, src=self)
+
+            def restore_sample(self, restore_key):
+                id, index = restore_key
+                assert id == type(self).__name__
+                return _S(index)
+
+            def can_restore_sample(self):
+                return True
+
+            def len_worker(self, worker_idx=None):
+                return self._n
+
+            def worker_has_samples(self):
+                return self._n > 0
+
+            def reset_state_own(self):
+                pass
+
+            def config(self):
+                return {"type": "leaf"}
+
+        def one_to_one(it):
+            for x in it:
+                yield _S(("a", x.value))
+
+        def one_to_many(it):
+            for x in it:
+                yield _S(("m", x.value, 0))
+                yield _S(("m", x.value, 1))
+                yield _S(("m", x.value, 2))
+
+        def with_skips(it):
+            for x in it:
+                if x.value % 2 == 0:
+                    yield _S(("s", x.value))
+
+        for fn in (one_to_one, one_to_many, with_skips):
+            ds = IterMapDataset(
+                _LeafDS(4, worker_config=wc), fn, stateless_iter_fn=True, worker_config=wc
+            )
+            wc.worker_activate(0)
+            try:
+                collected = [(s.value, s.__key__, s.__restore_key__) for s in ds]
+                self.assertGreater(len(collected), 0, f"{fn.__name__} produced no samples")
+                for value, key, rkey in collected:
+                    restored = ds.restore_sample(rkey)
+                    self.assertEqual(restored.value, value, f"{fn.__name__}: value mismatch")
+                    self.assertEqual(restored.__key__, key, f"{fn.__name__}: key mismatch")
+            finally:
+                wc.worker_deactivate()
+
     def test_packing(self):
         torch.manual_seed(42)
 
