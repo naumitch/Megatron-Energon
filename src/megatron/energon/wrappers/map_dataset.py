@@ -96,8 +96,9 @@ class MapDataset(BaseWrapperDataset[T_sample, T_sample_out], Generic[T_sample, T
         if self._generator_sample_key is not None:
             assert self._generator_offset is not None
             sample = self.dataset.restore_sample(self._generator_sample_key)
-            # Do not increment the sample index, use previous index
-            with self._sample_index.ctx(self._sample_index.current_idx) as sample_idx:
+            # Reuse the input sample's index without incrementing. current_idx was already
+            # advanced past it when the generator's input was pulled, so subtract one.
+            with self._sample_index.ctx(self._sample_index.current_idx - 1) as sample_idx:
                 mapped_sample = self.map_fn(sample)
             assert isinstance(mapped_sample, Generator)
             assert inspect.isgeneratorfunction(self.map_fn), (

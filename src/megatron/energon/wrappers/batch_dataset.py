@@ -100,7 +100,9 @@ class BatchDataset(BaseWrapperDataset[T_batch_sample, T_batch], Generic[T_batch_
             sample_restore_keys = self._generator_sample_keys
             assert self._generator_offset is not None
             batch = [self.dataset.restore_sample(inner_idx) for inner_idx in sample_restore_keys]
-            with self._sample_index.ctx(self._sample_index.current_idx) as sample_idx:
+            # Reuse the batch's original index without incrementing. current_idx was already
+            # advanced past it when the batch's input was pulled, so subtract one.
+            with self._sample_index.ctx(self._sample_index.current_idx - 1) as sample_idx:
                 batch_sample = self.batcher(batch)
             assert isinstance(batch_sample, Generator)
             assert inspect.isgeneratorfunction(self.batcher), (

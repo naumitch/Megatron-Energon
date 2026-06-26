@@ -1134,6 +1134,111 @@ class TestDataset(unittest.TestCase):
         first = next(iter(loader))
         self.assertIsNotNone(first)
 
+    def test_map_generator_resume_sample_index(self):
+        # Regression: resuming a MapDataset mid-generator used current_idx (already incremented by
+        # the input pull) as the sample_idx, off by one vs the uninterrupted run.
+        torch.manual_seed(42)
+
+        class TestTaskEncoder(TaskEncoder):
+            @stateless(restore_seeds=True)
+            def encode_sample(self, sample):
+                # Two outputs per input, both tagged with the input's sample index.
+                for tag in (0, 1):
+                    yield ExtendedCaptioningSample.extend(
+                        sample,
+                        batch_index=self.current_batch_index,
+                        sample_index=self.current_sample_index,
+                        rand_num=tag,
+                    )
+
+        def make():
+            return get_savable_loader(
+                get_train_dataset(
+                    self.dataset_path,
+                    batch_size=1,
+                    task_encoder=TestTaskEncoder(),
+                    worker_config=no_worker_config,
+                    shuffle_buffer_size=None,
+                    max_samples_per_sequence=None,
+                ),
+                checkpoint_every_min_n_samples=1,
+                checkpoint_every_sec=0,
+            )
+
+        # Uninterrupted reference: the valid set of (key, sample_index) pairs.
+        ref_pairs = set()
+        for _, b in zip(range(40), make()):
+            ref_pairs.add((tuple(b.__key__), tuple(b.sample_index)))
+
+        # Interrupted mid-generator (odd count) -> save -> restore into a fresh loader -> continue.
+        loader = make()
+        it = iter(loader)
+        seen = []
+        for _ in range(5):
+            b = next(it)
+            seen.append((tuple(b.__key__), tuple(b.sample_index)))
+        state = loader.save_state_rank()
+        loader2 = make()
+        loader2.restore_state_rank(state)
+        for _, b in zip(range(35), loader2):
+            seen.append((tuple(b.__key__), tuple(b.sample_index)))
+
+        # Every observed (key, sample_index) must match the uninterrupted reference.
+        for pair in seen:
+            self.assertIn(pair, ref_pairs, f"sample_index off for key {pair[0]}: {pair[1]}")
+
+    def test_batch_generator_resume_sample_index(self):
+        # Regression: resuming a BatchDataset mid-(generator batcher) used current_idx (already
+        # incremented) as the sample_idx, off by one vs the uninterrupted run.
+        torch.manual_seed(42)
+
+        class TestTaskEncoder(TaskEncoder):
+            @stateless
+            def batch(self, samples):
+                # Generator batcher: two outputs per input batch, tagged with the batch index.
+                for tag in (0, 1):
+                    yield ExtendedCaptioningSample.extend(
+                        samples[0],
+                        batch_index=self.current_batch_index,
+                        sample_index=self.current_sample_index,
+                        rand_num=tag,
+                    )
+
+        def make():
+            return get_savable_loader(
+                get_train_dataset(
+                    self.dataset_path,
+                    batch_size=2,
+                    task_encoder=TestTaskEncoder(),
+                    worker_config=no_worker_config,
+                    shuffle_buffer_size=None,
+                    max_samples_per_sequence=None,
+                ),
+                checkpoint_every_min_n_samples=1,
+                checkpoint_every_sec=0,
+            )
+
+        # Uninterrupted reference: valid set of (key, sample_index) pairs.
+        ref_pairs = set()
+        for _, b in zip(range(40), make()):
+            ref_pairs.add((b.__key__, b.sample_index))
+
+        # Interrupted mid-batcher-generator (odd count) -> save -> restore fresh loader -> continue.
+        loader = make()
+        it = iter(loader)
+        seen = []
+        for _ in range(5):
+            b = next(it)
+            seen.append((b.__key__, b.sample_index))
+        state = loader.save_state_rank()
+        loader2 = make()
+        loader2.restore_state_rank(state)
+        for _, b in zip(range(35), loader2):
+            seen.append((b.__key__, b.sample_index))
+
+        for pair in seen:
+            self.assertIn(pair, ref_pairs, f"sample_index off for key {pair[0]}: {pair[1]}")
+
     def test_current_batch_index_generator(self):
         # Tests if the get_current_batch_index works properly
         torch.manual_seed(42)
