@@ -165,6 +165,7 @@ class GroupBatchDataset(
 
         # Add samples to the buckets
         for sample in self.dataset:
+            grouped = False
             with self._group_key_failure_handler.handle_errors(sample):
                 with self._group_key_sample_index.ctx():
                     bucket_key, batch_size = self.sample_group_key(sample)
@@ -174,6 +175,11 @@ class GroupBatchDataset(
                     )
                     if self.fixed_batch_size is not None:
                         batch_size = self.fixed_batch_size
+                grouped = True
+            if not grouped:
+                # sample_group_key raised and the error was handled: skip this sample rather than
+                # bucketing it under a stale/unbound key.
+                continue
             bucket = buckets.get(bucket_key)
             if bucket is None:
                 assert batch_size is not None

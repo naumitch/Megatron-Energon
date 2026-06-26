@@ -1747,6 +1747,47 @@ class TestDataset(unittest.TestCase):
         assert restored_sample_1.__key__ == samples[1].__key__
         assert restored_sample_1.__restore_key__ == samples[1].__restore_key__
 
+    def test_group_batch_grouping_error_skips_sample(self):
+        # Regression: a handled error in batch_group_criterion left bucket_key/batch_size
+        # stale/unbound, so the failed sample crashed iteration (UnboundLocalError) or was
+        # misrouted into the wrong bucket. It must be skipped instead.
+        class FailFirstGroupingEncoder(
+            TaskEncoder[CaptioningSample, CaptioningSample, CaptioningSample, CaptioningSample]
+        ):
+            def __init__(self):
+                super().__init__()
+                self._n = 0
+
+            @stateless
+            def encode_sample(self, sample: CaptioningSample) -> CaptioningSample:
+                return sample
+
+            def batch_group_criterion(self, sample: CaptioningSample) -> Tuple[Hashable, int]:
+                self._n += 1
+                if self._n == 1:
+                    raise ValueError("boom on first grouped sample")
+                return "g", 2
+
+            @stateless
+            def encode_batch(self, batch: CaptioningSample) -> CaptioningEncodedBatch:
+                return CaptioningEncodedBatch(**dataclasses.asdict(batch))
+
+        loader = get_loader(
+            get_train_dataset(
+                self.dataset_path,
+                batch_size=None,
+                worker_config=no_worker_config,
+                shuffle_buffer_size=None,
+                max_samples_per_sequence=None,
+                task_encoder=FailFirstGroupingEncoder(),
+            )
+        )
+        # Before the fix: iteration crashes (UnboundLocalError) on the first failing sample.
+        # After the fix: that sample is skipped and grouping continues.
+        batches = list(zip(range(5), loader))
+        self.assertEqual(len(batches), 5)
+        assert all(isinstance(b, CaptioningEncodedBatch) for _, b in batches)
+
     def test_group_batch(self):
         class GroupingTaskEncoder(
             TaskEncoder[CaptioningSample, CaptioningSample, CaptioningSample, CaptioningSample]
