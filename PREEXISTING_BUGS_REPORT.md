@@ -119,9 +119,17 @@ Each entry below gives the location, the behaviour **before**, the **fix**, the 
 
 ---
 
-## (pending) 9. `IterMapDataset` — multi-yield restore
-A real bug exists in `IterMapDataset.restore_sample` when `iter_map_fn` yields more than one
-output per input. It is intentionally **not yet fixed** here: the naive fix is incorrect (it
-trades the one-to-many failure for a many-to-one/aggregate failure), so it requires a redesign of
-the restore-key accumulation plus tests for the one-to-one, one-to-many, and many-to-one fan-out
-shapes. It will be added to this report once it is fully verified (no regressions).
+## 9. `iter_map` — `IterMapDataset` multi-yield restore
+**Where:** `src/megatron/energon/wrappers/iter_map_dataset.py`, `IterMapDataset.__iter__`.
+
+- **Before:** the source-key window was cleared after **every** yielded output. For a one-to-many
+  `iter_map_fn` (one fetched sample → several outputs — a supported shape per the docstring's
+  non-aggregating contract), the 2nd+ output's restore key lost its source sample's key, so
+  `restore_sample` fed an empty input to `iter_map_fn` and raised
+  `RuntimeError: Generator did not yield enough samples`.
+- **Fix:** reset the source-key window on each fetched inner sample (its single source) instead of
+  after each yield, so every output of a one-to-many fn carries its source key. (Aggregating /
+  many-to-one restore is explicitly out of contract per the docstring, and is unaffected.)
+- **After:** `restore_sample` round-trips every output for one-to-one, one-to-many, and
+  one-to-zero (skip) `iter_map_fn` shapes.
+- **Test:** `tests/test_dataset.py::test_itermap_restore_sample_fanout_shapes`.
