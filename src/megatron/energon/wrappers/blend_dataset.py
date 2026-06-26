@@ -1,7 +1,7 @@
 # Copyright (c) 2025, NVIDIA CORPORATION.
 # SPDX-License-Identifier: BSD-3-Clause
 
-from typing import Any, Dict, Iterator, List, Sequence, Tuple, TypeVar
+from typing import Any, Dict, Iterator, List, Sequence, Tuple, TypeVar, Union
 
 import torch
 
@@ -108,6 +108,18 @@ class BlendDataset(BaseWrapperDataset[T_sample, T_sample]):
                 yield add_sample_restore_key(sample, ds_idx, src=self)
 
         self.exhausted = [False] * len(self.dataset_weights)
+
+    def restore_sample(self, restore_key: Tuple[Union[str, int, tuple], ...]) -> T_sample:
+        # BlendDataset always prepends (ClassName, ds_idx) in __iter__, even for a single wrapped
+        # dataset, so always strip the prefix (the base len==1 fast-path would forward it unstripped).
+        id, ds_idx = restore_key[:2]
+        assert id == type(self).__name__
+        assert isinstance(ds_idx, int)
+        return add_sample_restore_key(
+            self.datasets[ds_idx].restore_sample(restore_key[2:]),
+            ds_idx,
+            src=self,
+        )
 
     def config(self) -> Dict[str, Any]:
         return {

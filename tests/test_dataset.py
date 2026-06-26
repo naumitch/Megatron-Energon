@@ -1480,6 +1480,60 @@ class TestDataset(unittest.TestCase):
             for (_b1idx, b1), (_b2idx, b2) in zip(batches, cmp_batches)
         )
 
+    def test_single_dataset_concat_blend_restore_sample(self):
+        # Regression: ConcatDataset/BlendDataset wrapping a SINGLE dataset still prepend
+        # (ClassName, ds_idx) in __iter__, but the base len==1 restore_sample fast-path forwarded
+        # the key unstripped, crashing the inner dataset's fixed-arity restore-key parse.
+        from megatron.energon.flavors.base_dataset import SavableDataset, add_sample_restore_key
+        from megatron.energon.wrappers.blend_dataset import BlendDataset
+        from megatron.energon.wrappers.concat_dataset import ConcatDataset
+
+        wc = WorkerConfig(rank=0, world_size=1, num_workers=0)
+
+        class _IntSample:
+            def __init__(self, value):
+                self.value = value
+                self.__key__ = str(value)
+                self.__restore_key__ = ()
+
+        class _LeafDS(SavableDataset):
+            def __init__(self, n, *, worker_config):
+                super().__init__(worker_config=worker_config)
+                self._n = n
+
+            def __iter__(self):
+                for i in range(self._n):
+                    yield add_sample_restore_key(_IntSample(i), i, src=self)
+
+            def restore_sample(self, restore_key):
+                # Fixed-arity parse, like the real leaf WebdatasetSampleLoaderDataset.
+                id, index = restore_key
+                assert id == type(self).__name__
+                return _IntSample(index)
+
+            def len_worker(self, worker_idx=None):
+                return self._n
+
+            def worker_has_samples(self):
+                return self._n > 0
+
+            def reset_state_own(self):
+                pass
+
+            def config(self):
+                return {"type": "leaf"}
+
+        # ConcatDataset with a single dataset: full iterate + restore round-trip.
+        concat = ConcatDataset(_LeafDS(3, worker_config=wc), worker_config=wc)
+        for s in list(concat):
+            restored = concat.restore_sample(s.__restore_key__)
+            self.assertEqual(restored.value, s.value)
+
+        # BlendDataset with a single dataset: restore_sample on a key shaped like __iter__ emits.
+        blend = BlendDataset((_LeafDS(3, worker_config=wc), 1.0), worker_config=wc)
+        restored = blend.restore_sample(("BlendDataset", 0, "_LeafDS", 1))
+        self.assertEqual(restored.value, 1)
+
     def test_packing(self):
         torch.manual_seed(42)
 

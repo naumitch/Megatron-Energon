@@ -1,7 +1,7 @@
 # Copyright (c) 2025, NVIDIA CORPORATION.
 # SPDX-License-Identifier: BSD-3-Clause
 
-from typing import Any, Dict, Generic, Iterator, TypeVar
+from typing import Any, Dict, Generic, Iterator, Tuple, TypeVar, Union
 
 from megatron.energon.flavors.base_dataset import SavableDataset, add_sample_restore_key
 from megatron.energon.worker import WorkerConfig
@@ -40,6 +40,18 @@ class ConcatDataset(BaseWrapperDataset[T_sample, T_sample], Generic[T_sample]):
                     ds_idx,
                     src=self,
                 )
+
+    def restore_sample(self, restore_key: Tuple[Union[str, int, tuple], ...]) -> T_sample:
+        # ConcatDataset always prepends (ClassName, ds_idx) in __iter__, even for a single wrapped
+        # dataset, so always strip the prefix (the base len==1 fast-path would forward it unstripped).
+        id, ds_idx = restore_key[:2]
+        assert id == type(self).__name__
+        assert isinstance(ds_idx, int)
+        return add_sample_restore_key(
+            self.datasets[ds_idx].restore_sample(restore_key[2:]),
+            ds_idx,
+            src=self,
+        )
 
     def config(self) -> Dict[str, Any]:
         return {
