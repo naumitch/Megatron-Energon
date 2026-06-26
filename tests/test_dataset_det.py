@@ -651,6 +651,62 @@ class TestDataset(unittest.TestCase):
             for p in processes:
                 p.join()
 
+    def test_restore_resave_before_all_workers_emit(self):
+        # Regression: restoring then re-saving BEFORE every worker has emitted a post-restore
+        # sample must be transparent. The main-process per-worker counters were initialized
+        # without the restore offset, so a worker that had not yet emitted lost its skip offset on
+        # re-save and re-emitted samples.
+        worker_config = WorkerConfig(rank=0, world_size=1, num_workers=2)
+        sbs = 42
+        psi = 2
+        n1 = 18
+        ces = 60  # sparse checkpoints -> non-zero per-worker offsets
+
+        def make():
+            torch.manual_seed(42)
+            ds = get_train_dataset(
+                self.dataset_path,
+                split_part="train",
+                sample_type=TextSample,
+                worker_config=worker_config,
+                batch_size=1,
+                shuffle_buffer_size=sbs,
+                max_samples_per_sequence=2,
+                parallel_shard_iters=psi,
+            )
+            return get_savable_loader(ds, checkpoint_every_sec=ces)
+
+        # Build state_1 after iterating n1 samples (sparse checkpoints -> non-zero offsets).
+        loader = make()
+        it = iter(loader)
+        [data.text[0] for _, data in zip(range(n1), it)]
+        state_1 = loader.save_state_rank()
+        offsets_1 = [getattr(ws, "offset", 0) for ws in state_1.worker_states]
+        self.assertTrue(
+            any(o > 0 for o in offsets_1),
+            f"test must exercise non-zero offsets, got {offsets_1}",
+        )
+
+        # Canonical continuation from state_1.
+        M = 8
+        ref_loader = make()
+        ref_loader.restore_state_rank(state_1)
+        ref = [data.text[0] for _, data in zip(range(M), ref_loader)]
+
+        # Restore state_1, consume fewer than num_workers (=1) samples, then re-save.
+        loader_b = make()
+        loader_b.restore_state_rank(state_1)
+        b = [data.text[0] for _, data in zip(range(1), iter(loader_b))]
+        state_1b = loader_b.save_state_rank()
+
+        # Restore the re-saved state and continue.
+        loader_c = make()
+        loader_c.restore_state_rank(state_1b)
+        c = [data.text[0] for _, data in zip(range(M - 1), loader_c)]
+
+        # Re-saving before all workers emitted must be transparent: b + c == canonical.
+        self.assertEqual(b + c, ref, "re-save before all workers emitted changed the sample stream")
+
     def test_restore_state_workers(self):
         worker_config = WorkerConfig(rank=0, world_size=1, num_workers=2)
 

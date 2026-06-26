@@ -1025,7 +1025,11 @@ class SavableDataLoader(DataLoader[T], Generic[T]):
 
             self._worker_sample_counters = [
                 (
-                    ws.state.sample_index - 1
+                    # The restored worker still has to skip `offset` samples (held in the worker's
+                    # _workers_skip_samples) before emitting, so its last-emitted-index baseline is
+                    # sample_index + offset - 1. Omitting offset made a re-save before the worker
+                    # emitted collapse the offset and re-emit samples.
+                    ws.state.sample_index + ws.offset - 1
                     if (isinstance(ws, SavableDatasetCheckpoint) and ws.state is not None)
                     else -1
                 )
